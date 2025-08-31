@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_PATH=/app/data/fullstack_app.db
+    volumes:
+      - ./data:/app/data
+    networks:
+      - fullstack-network
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - REACT_APP_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    networks:
+      - fullstack-network
+
+volumes:
+  db-data:
+
+networks:
+  fullstack-network:
+    driver: bridge
