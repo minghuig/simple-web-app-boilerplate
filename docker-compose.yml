@@ -6,9 +6,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_PATH=/app/data/fullstack_app.db
+      - DATABASE_PATH=/app/fullstack_app.db
     volumes:
-      - ./data:/app/data
+      - backend-data:/app
     networks:
       - fullstack-network
 
@@ -24,7 +24,7 @@ services:
       - fullstack-network
 
 volumes:
-  db-data:
+  backend-data:
 
 networks:
   fullstack-network:

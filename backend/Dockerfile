@@ -7,9 +7,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENV DATABASE_PATH=/app/data/fullstack_app.db
-
-RUN mkdir -p /app/data
+ENV DATABASE_PATH=/app/fullstack_app.db
 
 EXPOSE 8000
 
