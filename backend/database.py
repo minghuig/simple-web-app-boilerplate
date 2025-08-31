@@ -1,33 +1,43 @@
-from peewee import *
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from contextvars import ContextVar
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 
-DATABASE_PATH = os.getenv('DATABASE_PATH', 'fullstack_app.db')
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql+psycopg://localhost:5432/fullstack_app')
 
-db = SqliteDatabase(DATABASE_PATH)
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+metadata = MetaData()
 
-class BaseModel(Model):
-    class Meta:
-        database = db
+Base = declarative_base()
 
-def connect_db():
+db_session: ContextVar[Session] = ContextVar('db_session')
+
+def get_db_session() -> Session:
+    return db_session.get()
+
+def test_connection():
     try:
-        db.connect()
+        with engine.connect() as conn:
+            conn.execute("SELECT 1")
         print("Database connected successfully")
         return True
     except Exception as e:
         print(f"Database connection failed: {e}")
         return False
 
-def close_db():
-    if not db.is_closed():
-        db.close()
-        print("Database connection closed")
-
-def create_tables():
-    from models import User, Task
-    with db:
-        db.create_tables([User, Task])
-        print("Tables created successfully")
+def run_migrations():
+    from alembic.config import Config
+    from alembic import command
+    
+    alembic_cfg = Config("alembic.ini")
+    try:
+        command.upgrade(alembic_cfg, "head")
+        print("Database migrations completed successfully")
+    except Exception as e:
+        print(f"Migration failed: {e}")
+        raise

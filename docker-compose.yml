@@ -1,14 +1,27 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=fullstack_app
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - fullstack-network
+
   backend:
     build: ./backend
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_PATH=/app/fullstack_app.db
-    volumes:
-      - backend-data:/app
+      - DATABASE_URL=postgresql+psycopg://postgres:password@postgres:5432/fullstack_app
+    depends_on:
+      - postgres
     networks:
       - fullstack-network
 
@@ -24,7 +37,7 @@ services:
       - fullstack-network
 
 volumes:
-  backend-data:
+  postgres-data:
 
 networks:
   fullstack-network:

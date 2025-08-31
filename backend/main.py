@@ -1,10 +1,11 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from contextlib import asynccontextmanager
+from sqlalchemy.orm import Session
 
-from database import connect_db, close_db, create_tables
+from database import run_migrations, SessionLocal, db_session, get_db_session, test_connection
 from models import User, Task
 
 
@@ -38,12 +39,25 @@ class TaskResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    connect_db()
-    create_tables()
+    test_connection()
+    run_migrations()
     yield
-    close_db()
 
 app = FastAPI(title="Full Stack App API", version="1.0.0", lifespan=lifespan)
+
+@app.middleware("http")
+async def db_session_middleware(request: Request, call_next):
+    session = SessionLocal()
+    db_session.set(session)
+    try:
+        response = await call_next(request)
+        session.commit()
+        return response
+    except Exception as e:
+        session.rollback()
+        raise
+    finally:
+        session.close()
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,20 +78,22 @@ def health_check():
 # User endpoints
 @app.post("/api/users", response_model=UserResponse)
 def create_user(user: UserCreate):
-    try:
-        new_user = User.create(username=user.username, email=user.email)
-        return UserResponse(
-            id=new_user.id,
-            username=new_user.username,
-            email=new_user.email,
-            is_active=new_user.is_active
-        )
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    db = get_db_session()
+    db_user = User(username=user.username, email=user.email)
+    db.add(db_user)
+    db.flush()
+    db.refresh(db_user)
+    return UserResponse(
+        id=db_user.id,
+        username=db_user.username,
+        email=db_user.email,
+        is_active=db_user.is_active
+    )
 
 @app.get("/api/users", response_model=List[UserResponse])
 def get_users():
-    users = User.select()
+    db = get_db_session()
+    users = db.query(User).all()
     return [UserResponse(
         id=user.id,
         username=user.username,
@@ -87,91 +103,99 @@ def get_users():
 
 @app.get("/api/users/{user_id}", response_model=UserResponse)
 def get_user(user_id: int):
-    try:
-        user = User.get(User.id == user_id)
-        return UserResponse(
-            id=user.id,
-            username=user.username,
-            email=user.email,
-            is_active=user.is_active
-        )
-    except User.DoesNotExist:
+    db = get_db_session()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        is_active=user.is_active
+    )
 
 # Task endpoints
 @app.post("/api/tasks", response_model=TaskResponse)
 def create_task(task: TaskCreate):
-    try:
-        user = User.get(User.id == task.user_id)
-        new_task = Task.create(
-            title=task.title,
-            description=task.description,
-            user=user
-        )
-        return TaskResponse(
-            id=new_task.id,
-            title=new_task.title,
-            description=new_task.description,
-            completed=new_task.completed,
-            user_id=new_task.user.id
-        )
-    except User.DoesNotExist:
+    db = get_db_session()
+    user = db.query(User).filter(User.id == task.user_id).first()
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    
+    db_task = Task(
+        title=task.title,
+        description=task.description,
+        user_id=task.user_id
+    )
+    db.add(db_task)
+    db.flush()
+    db.refresh(db_task)
+    return TaskResponse(
+        id=db_task.id,
+        title=db_task.title,
+        description=db_task.description,
+        completed=db_task.completed,
+        user_id=db_task.user_id
+    )
 
 @app.get("/api/tasks", response_model=List[TaskResponse])
 def get_tasks():
-    tasks = Task.select()
+    db = get_db_session()
+    tasks = db.query(Task).all()
     return [TaskResponse(
         id=task.id,
         title=task.title,
         description=task.description,
         completed=task.completed,
-        user_id=task.user.id
+        user_id=task.user_id
     ) for task in tasks]
 
 @app.get("/api/users/{user_id}/tasks", response_model=List[TaskResponse])
 def get_user_tasks(user_id: int):
-    try:
-        user = User.get(User.id == user_id)
-        tasks = Task.select().where(Task.user == user)
-        return [TaskResponse(
-            id=task.id,
-            title=task.title,
-            description=task.description,
-            completed=task.completed,
-            user_id=task.user.id
-        ) for task in tasks]
-    except User.DoesNotExist:
+    db = get_db_session()
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    
+    tasks = db.query(Task).filter(Task.user_id == user_id).all()
+    return [TaskResponse(
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        completed=task.completed,
+        user_id=task.user_id
+    ) for task in tasks]
 
 @app.put("/api/tasks/{task_id}", response_model=TaskResponse)
 def update_task(task_id: int, task_update: TaskUpdate):
-    try:
-        task = Task.get(Task.id == task_id)
-        if task_update.title is not None:
-            task.title = task_update.title
-        if task_update.description is not None:
-            task.description = task_update.description
-        if task_update.completed is not None:
-            task.completed = task_update.completed
-        task.save()
-        return TaskResponse(
-            id=task.id,
-            title=task.title,
-            description=task.description,
-            completed=task.completed,
-            user_id=task.user.id
-        )
-    except Task.DoesNotExist:
+    db = get_db_session()
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    
+    if task_update.title is not None:
+        task.title = task_update.title
+    if task_update.description is not None:
+        task.description = task_update.description
+    if task_update.completed is not None:
+        task.completed = task_update.completed
+    
+    db.flush()
+    db.refresh(task)
+    return TaskResponse(
+        id=task.id,
+        title=task.title,
+        description=task.description,
+        completed=task.completed,
+        user_id=task.user_id
+    )
 
 @app.delete("/api/tasks/{task_id}")
 def delete_task(task_id: int):
-    try:
-        task = Task.get(Task.id == task_id)
-        task.delete_instance()
-        return {"message": "Task deleted successfully"}
-    except Task.DoesNotExist:
+    db = get_db_session()
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
         raise HTTPException(status_code=404, detail="Task not found")
+    
+    db.delete(task)
+    return {"message": "Task deleted successfully"}
