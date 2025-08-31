@@ -1,9 +1,8 @@
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from contextlib import asynccontextmanager
-from sqlalchemy.orm import Session
 
 from database import run_migrations, SessionLocal, db_session, get_db_session, test_connection
 from models import User, Task
@@ -93,7 +92,7 @@ def create_user(user: UserCreate):
 @app.get("/api/users", response_model=List[UserResponse])
 def get_users():
     db = get_db_session()
-    users = db.query(User).all()
+    users = db.query(User).order_by(User.username).all()
     return [UserResponse(
         id=user.id,
         username=user.username,
@@ -141,7 +140,7 @@ def create_task(task: TaskCreate):
 @app.get("/api/tasks", response_model=List[TaskResponse])
 def get_tasks():
     db = get_db_session()
-    tasks = db.query(Task).all()
+    tasks = db.query(Task).order_by(Task.completed, Task.created_at.desc()).all()
     return [TaskResponse(
         id=task.id,
         title=task.title,
@@ -153,7 +152,7 @@ def get_tasks():
 @app.get("/api/users/{user_id}/tasks", response_model=List[TaskResponse])
 def get_user_tasks(user_id: int):
     db = get_db_session()
-    user = db.query(User).filter(User.id == user_id).first()
+    user = db.query(User).filter(User.id == user_id).order_by(Task.completed, Task.created_at.desc()).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
