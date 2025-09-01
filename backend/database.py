@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, MetaData, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from contextvars import ContextVar
@@ -23,7 +23,7 @@ def get_db_session() -> Session:
 def test_connection():
     try:
         with engine.connect() as conn:
-            conn.execute("SELECT 1")
+            conn.execute(text("SELECT 1"))
         print("Database connected successfully")
         return True
     except Exception as e:

@@ -150,7 +150,7 @@ function App() {
   return (
     <div className="App">
       <header className="App-header">
-        <h1>Full Stack React + FastAPI + SQLite</h1>
+        <h1>Full Stack React + FastAPI + Postgres</h1>
         
         <button 
           onClick={handleTestConnection} 
@@ -296,7 +296,7 @@ function App() {
         <div style={{ marginTop: '40px', fontSize: '14px' }}>
           <p>Frontend: React (Port 3000)</p>
           <p>Backend: FastAPI (Port 8000)</p>
-          <p>Database: SQLite (Local file)</p>
+          <p>Database: Postgres</p>
         </div>
       </header>
     </div>
