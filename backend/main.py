@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from typing import List, Optional
 from contextlib import asynccontextmanager
 
@@ -11,6 +11,13 @@ from models import User, Task
 class UserCreate(BaseModel):
     username: str
     email: str
+    
+    @field_validator('username')
+    @classmethod
+    def validate_username(cls, v):
+        if not v or not v.strip():
+            raise ValueError('Username cannot be empty')
+        return v
 
 class UserResponse(BaseModel):
     id: int
@@ -78,6 +85,17 @@ def health_check():
 @app.post("/api/users", response_model=UserResponse)
 def create_user(user: UserCreate):
     db = get_db_session()
+    
+    # Check for existing username
+    existing_user = db.query(User).filter(
+        (User.username == user.username) | (User.email == user.email)
+    ).first()
+    if existing_user:
+        if existing_user.username == user.username:
+            raise HTTPException(status_code=400, detail="Username already exists")
+        if existing_user.email == user.email:
+            raise HTTPException(status_code=400, detail="Email already exists")
+    
     db_user = User(username=user.username, email=user.email)
     db.add(db_user)
     db.flush()
@@ -152,11 +170,11 @@ def get_tasks():
 @app.get("/api/users/{user_id}/tasks", response_model=List[TaskResponse])
 def get_user_tasks(user_id: int):
     db = get_db_session()
-    user = db.query(User).filter(User.id == user_id).order_by(Task.completed, Task.created_at.desc()).first()
+    user = db.query(User).filter(User.id == user_id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    tasks = db.query(Task).filter(Task.user_id == user_id).all()
+    tasks = db.query(Task).filter(Task.user_id == user_id).order_by(Task.completed, Task.created_at.desc()).all()
     return [TaskResponse(
         id=task.id,
         title=task.title,
@@ -197,4 +215,5 @@ def delete_task(task_id: int):
         raise HTTPException(status_code=404, detail="Task not found")
     
     db.delete(task)
+    db.flush()  # Ensure the delete is executed
     return {"message": "Task deleted successfully"}
